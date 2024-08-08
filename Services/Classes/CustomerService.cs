@@ -11,6 +11,8 @@ using CustomerManagement.Services.Interfaces;
 using CustomerManagement.UnitOfWork;
 using System.Data;
 using CustomerManagement.Extensions;
+using System.Linq;
+using System.Net;
 namespace CustomerManagement.Services.Classes
 {
     public class CustomerService : ICustomerService
@@ -18,16 +20,24 @@ namespace CustomerManagement.Services.Classes
         private readonly IMapper _mapper;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IFileService _fileService;
+        private readonly IProvinceService _provinceService;
+        private readonly IDistrictService _districtService;
+        private readonly IWardService _wardService;
         private readonly ILogger<CustomerService> _logger;
 
 
         public CustomerService(ILogger<CustomerService> logger,IMapper mapper, IUnitOfWork unitOfWork
-            , IFileService fileService)
+            , IFileService fileService, IProvinceService provinceService, IDistrictService districtService
+            , IWardService wardService)
         {
             _logger = logger;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _fileService = fileService;
+            _provinceService = provinceService;
+            _districtService = districtService;
+            _wardService = wardService;
+
         }
 
         public async Task<ICollection<Customer>> GetAllAsync()
@@ -160,7 +170,7 @@ namespace CustomerManagement.Services.Classes
         public async Task<PaginateResponse<CustomerResponse>> SearchPagingAsync(PaginateVM paginateVM)
         {
             var paginatedCustomers = await _unitOfWork.CustomerRepository.GetAllPaginateAsync(
-                                        c => c.IsActived, c => c.CreatedAt, false, paginateVM);
+                                        c => c.IsActived && c.Name.Contains(paginateVM.SearchTerm), c => c.CreatedAt, false, paginateVM);
 
             List<CustomerResponse> customerResponses = new List<CustomerResponse>();
 
@@ -216,10 +226,86 @@ namespace CustomerManagement.Services.Classes
                     customer.Address.ProvinceName,
                     customer.CreatedAt.ToString(),
                     customer.UpdatedAt.ToString()
+                    
                 );
+                
             }
 
             return await _fileService.ExportToExcel(newDatatable, "export/excel/test.xlsx");
         }
+
+        public async Task<string> ImportExcelAsync(DataTable dataTable)
+        {
+            try
+            {
+                //create new
+                List<Customer> newCustomers = new List<Customer>();
+                List<CustomerAddress> newCustomerAddresss = new List<CustomerAddress>();
+
+                foreach (DataRow row in dataTable.Rows)
+                {
+                    Province? province = await _provinceService.GetByNameAsync(row[8].ToString());
+                    District? district = (await _districtService.GetByProvinceCodeAsync(province.Code))
+                                            .FirstOrDefault(d => d.Name.Contains(row[7].ToString()));
+                    var wards = await _wardService.GetByDistrictCodeAsync(district.Code);
+                    Ward? ward = (await _wardService.GetByDistrictCodeAsync(district.Code))
+                                    .FirstOrDefault(w => w.Name.Contains(row[6].ToString()));
+
+                    //get customer sex
+                    CustomerSex customerSex;
+                    if(string.Equals(CustomerSex.Male.GetEnumDescription(), row[4].ToString()))
+                    {
+                        customerSex = CustomerSex.Male;
+                    }else if (string.Equals(CustomerSex.Female.GetEnumDescription(), row[4].ToString()))
+                    {
+                        customerSex = CustomerSex.Female;
+                    }
+                    else
+                    {
+                        customerSex = CustomerSex.Other;
+                    }
+
+                    Customer newCustomer = new Customer()
+                    {
+                        Name = row[1].ToString(),
+                        Birthday = DateTime.Parse(row[2].ToString()),
+                        PhoneNumber = row[3].ToString(),
+                        Sex = customerSex,
+                    };
+
+                    CustomerAddress newCustomerAddress = new CustomerAddress()
+                    {
+                        Address = row[5].ToString(),
+                        ProvinceCode = province.Code,
+                        DistrictCode = district.Code,
+                        WardCode = ward.Code
+                    };
+
+                    //set value
+                    newCustomerAddress.CustomerId = newCustomer.Id;
+                    newCustomerAddress.FullAddress = $"{newCustomerAddress.Address}, {ward.Name}, {district.Name}, {province.Name}";
+
+                    newCustomers.Add(newCustomer);
+                    newCustomerAddresss.Add(newCustomerAddress);
+
+
+                }
+
+                await _unitOfWork.BeginTransactionAsync();
+
+                await _unitOfWork.CustomerRepository.AddRangeAsync(newCustomers);
+                await _unitOfWork.CustomerAddressRepository.AddRangeAsync(newCustomerAddresss);
+
+                await _unitOfWork.SaveChangeAsync();
+                await _unitOfWork.CommitAsync();
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                await _unitOfWork.RollBackAsync();
+                throw ex;
+            }
+        }
+        
     }
 }

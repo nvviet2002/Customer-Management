@@ -4,16 +4,13 @@ using CustomerManagement.Models.Responses.Customer;
 using CustomerManagement.Models.Responses.Pagination;
 using CustomerManagement.Models.ViewModels.Customer;
 using CustomerManagement.Models.ViewModels.Pagination;
-using CustomerManagement.Services.Classes;
 using CustomerManagement.Services.Interfaces;
-using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Spreadsheet;
-using DocumentFormat.OpenXml;
 using Microsoft.AspNetCore.Mvc;
-using DocumentFormat.OpenXml.VariantTypes;
 using ClosedXML.Excel;
 using System.Data;
 using CustomerManagement.Enums;
+using Microsoft.AspNetCore.Http;
+using DocumentFormat.OpenXml.Spreadsheet;
 
 namespace CustomerManagement.Controllers
 {
@@ -73,16 +70,16 @@ namespace CustomerManagement.Controllers
             return Ok(new ApiResponse<CustomerResponse>(StatusCodes.Status200OK, "Cập nhật thông tin khách hàng thành công!", customerResponse));
         }
 
-        [HttpGet("search")]
-        public async Task<IActionResult> SearchAsync([FromQuery] PaginateVM paginateVM)
+        [HttpPost("search")]
+        public async Task<IActionResult> SearchAsync(PaginateVM paginateVM)
         {
             var customers = await _customerService.SearchPagingAsync(paginateVM);
 
             return Ok(new ApiResponse<PaginateResponse<CustomerResponse>>(StatusCodes.Status200OK, "Lấy danh sách khách hàng thành công!", customers));
         }
 
-        [HttpGet("export")]
-        public async Task<IActionResult> ExportToExcel([FromQuery] PaginateVM paginateVM)
+        [HttpPost("export")]
+        public async Task<IActionResult> ExportToExcel(PaginateVM paginateVM)
         {
             string exportPath = await _customerService.ExportExcelAsync(paginateVM);
 
@@ -93,6 +90,53 @@ namespace CustomerManagement.Controllers
             }
 
             return Ok(new ApiResponse<dynamic>(StatusCodes.Status500InternalServerError, "Export excel thất bại", null));
+        }
+
+        [HttpPost("import")]
+        public async Task<IActionResult> ImportToExcel(IFormFile file)
+        {
+            DataTable dataTable = new DataTable();
+
+            using (var stream = file.OpenReadStream())
+            {
+                using (var workbook = new XLWorkbook(stream))
+                {
+                    // Lấy worksheet đầu tiên
+                    var worksheet = workbook.Worksheet(1);
+
+                    // Lấy các header của worksheet
+
+                    int columnCount = worksheet.LastColumnUsed().ColumnNumber();
+
+                    for (int column = 1; column <= columnCount; column++)
+                    {
+                        string columnHeader = worksheet.Cell(1, column).Value.ToString();
+                        if (!string.IsNullOrEmpty(columnHeader))
+                        {
+                            dataTable.Columns.Add(columnHeader);
+                        }
+                    }
+
+                    // Thêm các hàng dữ liệu vào DataTable
+                    int rowCount = worksheet.LastRowUsed().RowNumber();
+
+                    for (int row = 2; row <= rowCount; row++)
+                    {
+                        DataRow dataRow = dataTable.NewRow();
+
+                        for (int column = 1; column <= dataTable.Columns.Count; column++)
+                        {
+                            dataRow[column - 1] = worksheet.Cell(row, column).Value.ToString();
+                        }
+
+                        dataTable.Rows.Add(dataRow);
+                    }
+                }
+            }
+
+            await _customerService.ImportExcelAsync(dataTable);
+
+            return Ok(new ApiResponse<dynamic>(StatusCodes.Status200OK, "Import thành công", null));
         }
     }
 }

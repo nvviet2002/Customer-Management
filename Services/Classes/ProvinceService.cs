@@ -17,8 +17,16 @@ namespace CustomerManagement.Services.Classes
 
         public async Task<ICollection<Province>> GetAllAsync()
         {
-            ICollection<Province> provinces = await _unitOfWork.GetDbContext().Provinces.ToListAsync();
+            ICollection<Province> provinces = await _unitOfWork.GetDbContext().Provinces
+                                                        .OrderBy(p=>p.Code).ToListAsync();
             return provinces;
+        }
+
+        public async Task<Province?> GetByNameAsync(string name)
+        {
+            Province? province = await _unitOfWork.GetDbContext().Provinces
+                                    .FirstOrDefaultAsync(p=>p.Name.Contains(name));
+            return province;
         }
     }
 }

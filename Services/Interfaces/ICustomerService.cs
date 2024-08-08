@@ -5,6 +5,7 @@ using CustomerManagement.Models.ViewModels.Customer;
 using CustomerManagement.Models.ViewModels.Pagination;
 using System.Linq.Expressions;
 using DocumentFormat.OpenXml;
+using System.Data;
 
 namespace CustomerManagement.Services.Interfaces
 {
@@ -22,6 +23,8 @@ namespace CustomerManagement.Services.Interfaces
         Task<PaginateResponse<CustomerResponse>> SearchPagingAsync(PaginateVM paginateReq);
 
         Task<string> ExportExcelAsync(PaginateVM paginateVM);
+
+        Task<string> ImportExcelAsync(DataTable dataTable);
 
     }
 }

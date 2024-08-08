@@ -25,6 +25,7 @@ namespace CustomerManagement.Services.Classes
         {
             ICollection<Ward> wards = await _unitOfWork.GetDbContext().Wards
                                                         .Where(w => w.DistrictCode == districtCode)
+                                                        .OrderBy(w=>w.Code)
                                                         .ToListAsync();
             return wards;
         }

@@ -5,5 +5,6 @@ namespace CustomerManagement.Services.Interfaces
     public interface IProvinceService
     {
         Task<ICollection<Province>> GetAllAsync();
+        Task<Province?> GetByNameAsync(string name);
     }
 }
